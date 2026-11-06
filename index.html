@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#10b981">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Nhịp Sống">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>Nhịp Sống – Việc làm, thói quen & ăn uống</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<script>tailwind.config={darkMode:'class'}</script>
+<script>try{var t=(JSON.parse(localStorage.getItem('nhipsong.v1'))||{}).theme||(matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light');document.documentElement.classList.toggle('dark',t==='dark')}catch(e){}</script>
+<style>
+  body{font-family:'Be Vietnam Pro',system-ui,sans-serif;-webkit-tap-highlight-color:transparent}
+  .safe-b{padding-bottom:max(env(safe-area-inset-bottom),.5rem)}
+  .safe-t{padding-top:max(env(safe-area-inset-top),.75rem)}
+  button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid #10b981;outline-offset:2px}
+  @keyframes pop{0%{transform:scale(.9)}60%{transform:scale(1.08)}100%{transform:scale(1)}}
+  .pop{animation:pop .25s ease}
+  @media (prefers-reduced-motion:reduce){.pop{animation:none}}
+</style>
+</head>
+<body class="bg-stone-100 text-stone-900 dark:bg-zinc-950 dark:text-zinc-100 min-h-screen">
+<div class="max-w-lg mx-auto min-h-screen relative">
+  <header class="sticky top-0 z-20 bg-stone-100/90 dark:bg-zinc-950/90 backdrop-blur safe-t px-4 pb-3">
+    <div class="flex items-center justify-between">
+      <h1 class="text-xl font-extrabold tracking-tight">Nhịp Sống</h1>
+      <button data-a="theme" class="w-10 h-10 rounded-full bg-white dark:bg-zinc-900 shadow-sm text-lg" aria-label="Đổi giao diện sáng/tối" id="themeBtn"></button>
+    </div>
+    <div class="mt-2 flex items-center justify-between bg-white dark:bg-zinc-900 rounded-2xl px-1 py-1 shadow-sm">
+      <button data-a="prev" class="w-11 h-11 rounded-xl text-lg" aria-label="Ngày trước">‹</button>
+      <button data-a="today" id="dateLbl" class="font-semibold text-sm px-2"></button>
+      <button data-a="next" class="w-11 h-11 rounded-xl text-lg" aria-label="Ngày sau">›</button>
+    </div>
+  </header>
+
+  <main id="app" class="px-4 pb-28"></main>
+
+  <nav class="fixed bottom-0 inset-x-0 z-30">
+    <div class="max-w-lg mx-auto bg-white dark:bg-zinc-900 border-t border-stone-200 dark:border-zinc-800 safe-b px-2 pt-1 grid grid-cols-5" id="nav"></div>
+  </nav>
+</div>
+
+<script>
+const $=s=>document.querySelector(s);
+const KEY='nhipsong.v1';
+const pad=n=>String(n).padStart(2,'0');
+const ymd=d=>d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate());
+const parse=s=>new Date(s+'T00:00:00');
+const todayStr=()=>ymd(new Date());
+const uid=()=>Math.random().toString(36).slice(2,9);
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const vnd=n=>new Intl.NumberFormat('vi-VN').format(Math.round(n))+'đ';
+
+/* ---------- Dữ liệu món ăn (giá ước tính, VNĐ; kcal ước tính) ---------- */
+const MEALS={s:'Sáng',t:'Trưa',o:'Tối',x:'Ăn vặt / khác'};
+const SHARE={s:.25,t:.4,o:.35};
+const KCAL={lose:1600,keep:2000,gain:2500};
+const GOALS={lose:'Giảm cân',keep:'Giữ cân',gain:'Tăng cân'};
+const D=[
+ {m:'s',n:'Bánh mì trứng',p:20000,k:380},{m:'s',n:'Xôi gà',p:25000,k:450},{m:'s',n:'Phở gà',p:40000,k:420},
+ {m:'s',n:'Cháo thịt bằm',p:25000,k:300},{m:'s',n:'Yến mạch + chuối + sữa',p:18000,k:330},{m:'s',n:'Bún riêu',p:35000,k:410},
+ {m:'s',n:'Bánh cuốn',p:30000,k:350},{m:'s',n:'Sữa chua + trái cây',p:20000,k:200},{m:'s',n:'Hủ tiếu',p:40000,k:450},
+ {m:'s',n:'2 trứng luộc + bánh mì',p:15000,k:360},
+ {m:'t',n:'Cơm gà luộc',p:45000,k:600},{m:'t',n:'Cơm sườn',p:45000,k:750},{m:'t',n:'Cơm cá kho + rau',p:35000,k:550},
+ {m:'t',n:'Bún thịt nướng',p:40000,k:620},{m:'t',n:'Cơm ức gà áp chảo + rau luộc',p:55000,k:520},{m:'t',n:'Salad ức gà',p:60000,k:380},
+ {m:'t',n:'Cơm trứng chiên + canh rau',p:25000,k:520},{m:'t',n:'Bún bò',p:50000,k:560},{m:'t',n:'Mì Quảng',p:40000,k:580},
+ {m:'t',n:'Cơm bò xào + rau',p:60000,k:680},{m:'t',n:'Gỏi cuốn tôm thịt (5 cuốn)',p:35000,k:330},
+ {m:'o',n:'Đậu hũ sốt cà + canh rau + ít cơm',p:25000,k:380},{m:'o',n:'Cá hấp + rau luộc',p:55000,k:350},{m:'o',n:'Cháo gà',p:35000,k:380},
+ {m:'o',n:'Ức gà luộc + khoai lang',p:40000,k:420},{m:'o',n:'Bún chả cá',p:40000,k:450},{m:'o',n:'Trứng ốp la + salad + bánh mì',p:28000,k:430},
+ {m:'o',n:'Cơm thịt kho trứng',p:40000,k:700},{m:'o',n:'Bò xào hành tây + cơm',p:55000,k:650},{m:'o',n:'Canh chua cá + cơm',p:45000,k:550},
+ {m:'o',n:'Đậu hũ nhồi thịt + cơm',p:30000,k:480},{m:'o',n:'Súp lơ xào tôm',p:50000,k:300}
+];
+
+/* Định lượng: kcal và giá ước tính cho 1 đơn vị (sửa tùy ý) */
+const F=[
+ {n:'Trứng gà',u:'quả',k:75,p:3500},{n:'Thịt bò (nấu chín)',u:'100g',k:250,p:30000},{n:'Ức gà luộc',u:'100g',k:165,p:12000},
+ {n:'Thịt heo nạc',u:'100g',k:200,p:13000},{n:'Cá (hấp/kho)',u:'100g',k:150,p:15000},{n:'Cá hồi',u:'100g',k:208,p:50000},
+ {n:'Tôm',u:'100g',k:100,p:25000},{n:'Đậu hũ',u:'100g',k:76,p:4000},{n:'Cơm trắng',u:'chén',k:200,p:3000},
+ {n:'Bún tươi',u:'100g',k:110,p:3000},{n:'Bánh mì (không)',u:'ổ',k:250,p:5000},{n:'Khoai lang',u:'100g',k:90,p:3000},
+ {n:'Yến mạch',u:'100g',k:380,p:8000},{n:'Rau luộc',u:'100g',k:30,p:3000},{n:'Chuối',u:'quả',k:90,p:3000},
+ {n:'Táo',u:'quả',k:95,p:8000},{n:'Sữa tươi',u:'hộp',k:120,p:8000},{n:'Sữa chua',u:'hũ',k:100,p:7000},
+ {n:'Dầu ăn',u:'muỗng',k:120,p:500},{n:'Cà phê sữa',u:'ly',k:120,p:25000},{n:'Trà sữa',u:'ly',k:300,p:35000}
+];
+const pv=(f,q)=>`${q} ${f.u} ≈ ${Math.round(f.k*q)} kcal · ${vnd(f.p*q)}`;
+
+/* ---------- Trạng thái & lưu trữ ---------- */
+let S={theme:matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light',tab:'tasks',cv:'month',plan:{},shop:{},notif:{on:false,last:{},rem:[{id:'r1',label:'Điểm danh & việc hôm nay',time:'08:00',msg:'Đến giờ điểm danh thói quen và xem việc cần làm hôm nay.',on:true},{id:'r2',label:'Thực đơn ăn uống',time:'11:30',msg:'Xem thực đơn hôm nay và ghi lại bữa ăn của bạn.',on:true}]},tasks:[],habits:[],budget:150000,goal:'keep',log:{}};
+try{Object.assign(S,JSON.parse(localStorage.getItem(KEY))||{})}catch(e){}
+S.date=todayStr();S.cm=S.date.slice(0,7);
+const save=()=>{try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}};
+let SUG={};
+/* Nguyên liệu mỗi món: "chỉ số trong F x số lượng" */
+const ING={'Bánh mì trứng':'10x1,0x1','Xôi gà':'8x1,2x0.8','Phở gà':'9x2,2x0.8,13x0.5','Cháo thịt bằm':'8x1,3x0.5','Yến mạch + chuối + sữa':'12x0.4,14x1,16x1','Bún riêu':'9x2,6x0.5,0x1','Bánh cuốn':'9x1.5,3x0.5','Sữa chua + trái cây':'17x1,15x1','Hủ tiếu':'9x2,3x0.7,13x0.5','2 trứng luộc + bánh mì':'0x2,10x1',
+'Cơm gà luộc':'8x1.5,2x1.2,13x0.5','Cơm sườn':'8x1.5,3x1.5,18x0.5','Cơm cá kho + rau':'8x1.5,4x1.2,13x0.7','Bún thịt nướng':'9x2,3x1.2,13x0.5','Cơm ức gà áp chảo + rau luộc':'8x1.5,2x1.3,13x1,18x0.5','Salad ức gà':'2x1.2,13x1.5,18x0.5','Cơm trứng chiên + canh rau':'8x1.5,0x2,13x0.7,18x0.5','Bún bò':'9x2,1x1,13x0.5','Mì Quảng':'9x2,6x0.7,0x1','Cơm bò xào + rau':'8x1.5,1x1.2,13x0.7,18x0.5','Gỏi cuốn tôm thịt (5 cuốn)':'9x1,6x0.7,3x0.5,13x0.5',
+'Đậu hũ sốt cà + canh rau + ít cơm':'7x2,13x1,8x0.7','Cá hấp + rau luộc':'4x1.5,13x1.5','Cháo gà':'8x1,2x0.8','Ức gà luộc + khoai lang':'2x1.3,11x2','Bún chả cá':'9x2,4x1','Trứng ốp la + salad + bánh mì':'0x2,13x1,10x1,18x0.5','Cơm thịt kho trứng':'8x1.5,3x1.5,0x1','Bò xào hành tây + cơm':'8x1.5,1x1,13x0.5,18x0.5','Canh chua cá + cơm':'8x1.5,4x1.2,13x0.7','Đậu hũ nhồi thịt + cơm':'7x1.5,3x0.8,8x1.5','Súp lơ xào tôm':'6x1.2,13x1.5,18x0.5'};
+const pick=m=>{const a=suggest(m);return a[Math.floor(Math.random()*a.length)]};
+const newPlan=()=>{S.plan[S.date]={s:pick('s').n,t:pick('t').n,o:pick('o').n};S.shop[S.date]={}};
+const planDishes=()=>{const p=S.plan[S.date];return p?['s','t','o'].map(m=>({m,d:D.find(x=>x.n===p[m])})).filter(o=>o.d):[]};
+function shopList(){
+  const g={};
+  planDishes().forEach(({d})=>(ING[d.n]||'').split(',').filter(Boolean).forEach(t=>{const[i,q]=t.split('x');g[i]=(g[i]||0)+ +q}));
+  return Object.entries(g).map(([i,q])=>({i,q,f:F[i]}));
+}
+const getSug=m=>SUG[m]||(SUG[m]=suggest(m));
+function suggest(m){
+  const cap=S.budget*SHARE[m], target=KCAL[S.goal]*SHARE[m];
+  const pool=D.filter(x=>x.m===m);
+  const ok=pool.filter(x=>x.p<=cap);
+  const base=ok.length?ok:[...pool].sort((a,b)=>a.p-b.p).slice(0,3);
+  return base.map(x=>({x,s:Math.abs(x.k-target)+Math.random()*120})).sort((a,b)=>a.s-b.s).slice(0,3).map(o=>o.x);
+}
+
+/* ---------- Thói quen: chuỗi ngày ---------- */
+function streak(days){
+  const set=new Set(days); let d=new Date(); let n=0;
+  if(!set.has(ymd(d))) d.setDate(d.getDate()-1);
+  while(set.has(ymd(d))){n++;d.setDate(d.getDate()-1)}
+  return n;
+}
+
+/* ---------- Giao diện ---------- */
+const card='bg-white dark:bg-zinc-900 rounded-2xl shadow-sm';
+const input='w-full bg-stone-100 dark:bg-zinc-800 rounded-xl px-3 h-11 text-sm placeholder:text-stone-400 dark:placeholder:text-zinc-500';
+const btn='h-11 px-4 rounded-xl bg-emerald-500 text-white font-semibold text-sm active:scale-95 transition';
+
+function viewTasks(){
+  const list=S.tasks.filter(t=>t.d===S.date);
+  const done=list.filter(t=>t.done).length;
+  const pct=list.length?Math.round(done/list.length*100):0;
+  return `
+  <form data-f="task" class="flex gap-2 mb-3">
+    <input name="t" class="${input}" placeholder="Thêm việc cho ngày này…" autocomplete="off" required>
+    <button class="${btn}">Thêm</button>
+  </form>
+  <div class="${card} p-4 mb-3">
+    <div class="flex justify-between text-sm font-semibold mb-2"><span>Hoàn thành ${done}/${list.length}</span><span>${pct}%</span></div>
+    <div class="h-2 rounded-full bg-stone-200 dark:bg-zinc-800 overflow-hidden"><div class="h-full bg-emerald-500 transition-all" style="width:${pct}%"></div></div>
+  </div>
+  <ul class="space-y-2">
+  ${list.length?list.map(t=>`
+    <li class="${card} flex items-center gap-2 p-2 pl-3">
+      <button data-a="toggle" data-id="${t.id}" aria-label="Đánh dấu hoàn thành" class="w-7 h-7 shrink-0 rounded-full border-2 ${t.done?'bg-emerald-500 border-emerald-500 text-white':'border-stone-300 dark:border-zinc-600'} text-sm">${t.done?'✓':''}</button>
+      <span class="flex-1 text-sm ${t.done?'line-through text-stone-400 dark:text-zinc-500':''}">${esc(t.t)}</span>
+      <button data-a="edit" data-id="${t.id}" class="w-10 h-10 rounded-xl text-stone-500" aria-label="Sửa">✎</button>
+      <button data-a="del" data-id="${t.id}" class="w-10 h-10 rounded-xl text-rose-500" aria-label="Xóa">✕</button>
+    </li>`).join(''):`<li class="text-center text-sm text-stone-500 dark:text-zinc-500 py-10">Chưa có việc nào. Nhập việc đầu tiên ở trên.</li>`}
+  </ul>`;
+}
+
+function viewHabits(){
+  const days=[...Array(7)].map((_,i)=>{const d=new Date();d.setDate(d.getDate()-6+i);return d});
+  return `
+  <form data-f="habit" class="flex gap-2 mb-3">
+    <input name="n" class="${input}" placeholder="Thói quen mới, ví dụ: Uống 2 lít nước" autocomplete="off" required>
+    <button class="${btn}">Thêm</button>
+  </form>
+  <ul class="space-y-3">
+  ${S.habits.length?S.habits.map(h=>{
+    const on=h.days.includes(S.date), st=streak(h.days);
+    return `<li class="${card} p-4">
+      <div class="flex items-start justify-between gap-2">
+        <div><p class="font-semibold text-sm">${esc(h.n)}</p>
+        <p class="text-xs mt-1 ${st?'text-orange-500':'text-stone-500 dark:text-zinc-500'}">🔥 Chuỗi ${st} ngày</p></div>
+        <button data-a="hdel" data-id="${h.id}" class="w-9 h-9 rounded-xl text-rose-500" aria-label="Xóa thói quen">✕</button>
+      </div>
+      <div class="flex items-center justify-between mt-3">
+        <div class="flex gap-1.5">${days.map(d=>{const k=ymd(d);const x=h.days.includes(k);
+          return `<span title="${k}" class="w-6 h-6 rounded-md text-[10px] flex items-center justify-center ${x?'bg-emerald-500 text-white':'bg-stone-200 dark:bg-zinc-800 text-stone-500'} ${k===S.date?'ring-2 ring-emerald-400':''}">${d.getDate()}</span>`}).join('')}</div>
+        <button data-a="check" data-id="${h.id}" class="h-11 px-4 rounded-xl font-semibold text-sm active:scale-95 transition ${on?'bg-emerald-500 text-white pop':'bg-stone-200 dark:bg-zinc-800'}">${on?'Đã điểm danh ✓':'Điểm danh'}</button>
+      </div>
+    </li>`}).join(''):`<li class="text-center text-sm text-stone-500 dark:text-zinc-500 py-10">Chưa có thói quen nào. Thêm một thói quen để bắt đầu chuỗi ngày.</li>`}
+  </ul>`;
+}
+
+function viewDiet(){
+  const log=S.log[S.date]||[];
+  const spent=log.reduce((a,x)=>a+x.p,0), kcal=log.reduce((a,x)=>a+(x.k||0),0);
+  const pct=S.budget?Math.min(100,spent/S.budget*100):0, over=spent-S.budget;
+  const state=over>0?['bg-rose-500','text-rose-600 dark:text-rose-400',`Vượt ngân sách ${vnd(over)}. Chọn món rẻ hơn cho các bữa còn lại.`]
+    :spent>S.budget*.85?['bg-amber-500','text-amber-600 dark:text-amber-400',`Sắp chạm trần, còn ${vnd(-over)}.`]
+    :['bg-emerald-500','text-emerald-600 dark:text-emerald-400',`Còn ${vnd(-over)} trong ngân sách.`];
+  return `
+  <div class="${card} p-4 mb-3">
+    <label class="text-xs font-semibold text-stone-500 dark:text-zinc-400">Ngân sách ăn uống mỗi ngày (VNĐ)</label>
+    <input data-c="budget" type="number" inputmode="numeric" min="0" step="5000" value="${S.budget}" class="${input} mt-1 mb-3">
+    <div class="grid grid-cols-3 gap-2">${Object.entries(GOALS).map(([k,v])=>`
+      <button data-a="goal" data-id="${k}" class="h-11 rounded-xl text-sm font-semibold ${S.goal===k?'bg-emerald-500 text-white':'bg-stone-100 dark:bg-zinc-800'}">${v}</button>`).join('')}</div>
+    <p class="text-xs text-stone-500 dark:text-zinc-500 mt-2">Mục tiêu năng lượng ước tính: ~${KCAL[S.goal]} kcal/ngày. Đây là con số tham khảo chung, không thay thế tư vấn dinh dưỡng.</p>
+  </div>
+
+  <div class="${card} p-4 mb-3">
+    <div class="flex justify-between items-end">
+      <div><p class="text-xs text-stone-500 dark:text-zinc-400">Đã chi hôm nay</p><p class="text-2xl font-extrabold">${vnd(spent)}</p></div>
+      <p class="text-xs text-right text-stone-500 dark:text-zinc-400">/ ${vnd(S.budget)}<br>${kcal} kcal</p>
+    </div>
+    <div class="h-2.5 rounded-full bg-stone-200 dark:bg-zinc-800 overflow-hidden mt-3"><div class="h-full ${state[0]} transition-all" style="width:${pct}%"></div></div>
+    <p class="text-sm font-semibold mt-2 ${state[1]}" role="status">${over>0?'⚠️ ':''}${state[2]}</p>
+  </div>
+
+  ${planCard()}
+  ${['s','t','o'].map(m=>`
+  <section class="mb-4">
+    <div class="flex items-center justify-between mb-2">
+      <h2 class="font-bold text-sm">Gợi ý bữa ${MEALS[m].toLowerCase()} <span class="font-normal text-xs text-stone-500 dark:text-zinc-500">(khoảng ${vnd(S.budget*SHARE[m])})</span></h2>
+      <button data-a="reroll" data-id="${m}" class="h-9 px-3 rounded-lg text-xs font-semibold bg-stone-200 dark:bg-zinc-800">Gợi ý lại</button>
+    </div>
+    <ul class="space-y-2">${getSug(m).map((x,i)=>`
+      <li class="${card} flex items-center gap-3 p-3">
+        <div class="flex-1"><p class="text-sm font-medium">${esc(x.n)}</p><p class="text-xs text-stone-500 dark:text-zinc-400">${vnd(x.p)} · ${x.k} kcal${x.p>S.budget*SHARE[m]?' · vượt phần bữa':''}</p></div>
+        <button data-a="addsug" data-id="${m}:${i}" class="h-10 px-3 rounded-xl bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 text-sm font-semibold">+ Thêm</button>
+      </li>`).join('')}</ul>
+  </section>`).join('')}
+
+  <section class="mb-4">
+    <h2 class="font-bold text-sm mb-2">Nhật ký ăn uống</h2>
+    <ul class="space-y-2 mb-3">${log.length?log.map(x=>`
+      <li class="${card} flex items-center gap-2 p-3">
+        <div class="flex-1"><p class="text-sm font-medium">${esc(x.n)}</p><p class="text-xs text-stone-500 dark:text-zinc-400">${MEALS[x.m]} · ${vnd(x.p)} · ${x.k} kcal</p></div>
+        <div class="flex items-center gap-1"><button data-a="qm" data-id="${x.id}" class="w-9 h-9 rounded-lg bg-stone-200 dark:bg-zinc-800 font-bold" aria-label="Giảm khẩu phần">−</button><span class="text-xs font-semibold w-14 text-center">${x.q||1} ${esc(x.u||'phần')}</span><button data-a="qp" data-id="${x.id}" class="w-9 h-9 rounded-lg bg-stone-200 dark:bg-zinc-800 font-bold" aria-label="Tăng khẩu phần">+</button></div>
+        <button data-a="ldel" data-id="${x.id}" class="w-10 h-10 rounded-xl text-rose-500" aria-label="Xóa">✕</button>
+      </li>`).join(''):`<li class="text-center text-sm text-stone-500 dark:text-zinc-500 py-4">Chưa ghi món nào. Bấm “+ Thêm” ở gợi ý hoặc nhập tay bên dưới.</li>`}</ul>
+    <form data-f="portion" class="${card} p-3 grid grid-cols-2 gap-2 mb-3">
+      <p class="col-span-2 text-sm font-bold">Thêm theo khẩu phần</p>
+      <select name="f" class="${input} col-span-2">${F.map((f,i)=>`<option value="${i}">${f.n} (1 ${f.u} = ${f.k} kcal)</option>`).join('')}</select>
+      <input name="q" type="number" inputmode="decimal" min="0.5" step="0.5" value="1" class="${input}" aria-label="Số khẩu phần">
+      <select name="m" class="${input}">${Object.entries(MEALS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select>
+      <p id="pv" class="col-span-2 text-xs text-stone-500 dark:text-zinc-400">${pv(F[0],1)}</p>
+      <button class="${btn} col-span-2">Thêm vào nhật ký</button>
+    </form>
+    <p class="text-xs font-semibold text-stone-500 dark:text-zinc-400 mb-1">Hoặc nhập tay món bất kỳ</p>
+    <form data-f="meal" class="${card} p-3 grid grid-cols-2 gap-2">
+      <input name="n" class="${input} col-span-2" placeholder="Tên món ăn" required autocomplete="off">
+      <input name="p" type="number" inputmode="numeric" min="0" class="${input}" placeholder="Giá (đ)" required>
+      <input name="k" type="number" inputmode="numeric" min="0" class="${input}" placeholder="kcal (tùy chọn)">
+      <select name="m" class="${input}">${Object.entries(MEALS).map(([k,v])=>`<option value="${k}">${v}</option>`).join('')}</select>
+      <button class="${btn}">Ghi món</button>
+    </form>
+  </section>`;
+}
+
+/* ---------- Lịch & tiến độ tháng ---------- */
+const L=a=>a.length?`<ul class="mt-1 space-y-1 text-sm">${a.map(t=>`<li>${t}</li>`).join('')}</ul>`:'';
+const bar=(l,v,t,c)=>`<div class="mb-3"><div class="flex justify-between text-xs mb-1"><span>${l}</span><span class="font-semibold">${t}</span></div><div class="h-2 rounded-full bg-stone-200 dark:bg-zinc-800 overflow-hidden"><div class="h-full ${c}" style="width:${v}%"></div></div></div>`;
+function dayInfo(k){
+  const tk=S.tasks.filter(t=>t.d===k), lg=S.log[k]||[];
+  return {tk,done:tk.filter(t=>t.done).length,hb:S.habits.filter(h=>h.days.includes(k)),lg,sp:lg.reduce((a,x)=>a+x.p,0),kc:lg.reduce((a,x)=>a+x.k,0)};
+}
+function dayDetail(k,full){
+  const i=dayInfo(k), cell='rounded-xl bg-stone-100 dark:bg-zinc-800 p-2';
+  const sec=t=>`<p class="text-xs font-semibold text-stone-500 dark:text-zinc-400 mt-3">${t}</p>`;
+  return `<div class="${card} p-4 mb-3">
+    <p class="font-bold text-sm mb-2">${parse(k).toLocaleDateString('vi-VN',{weekday:'long',day:'numeric',month:'long'})}</p>
+    <div class="grid grid-cols-3 gap-2 text-center text-xs">
+      <div class="${cell}"><p class="text-base font-extrabold">${i.done}/${i.tk.length}</p>việc xong</div>
+      <div class="${cell}"><p class="text-base font-extrabold">${i.hb.length}/${S.habits.length}</p>thói quen</div>
+      <div class="${cell}"><p class="text-base font-extrabold ${i.sp>S.budget?'text-rose-500':''}">${i.kc}</p>kcal · ${vnd(i.sp)}</div>
+    </div>
+    ${full?sec('Việc làm')+L(i.tk.map(t=>(t.done?'✅ ':'⬜ ')+esc(t.t)))+sec('Thói quen')+L(S.habits.map(h=>(h.days.includes(k)?'✅ ':'⬜ ')+esc(h.n)))+sec('Bữa ăn')+L(i.lg.map(x=>MEALS[x.m]+': '+esc(x.n)+' × '+(x.q||1)+' '+esc(x.u||'phần')+' · '+x.k+' kcal')):''}
+    <div class="grid grid-cols-3 gap-2 mt-3">${[['tasks','Việc làm'],['habits','Thói quen'],['diet','Ăn uống']].map(([t,l])=>`<button data-a="go" data-id="${t}" class="h-10 rounded-xl text-xs font-semibold bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">${l}</button>`).join('')}</div>
+  </div>`;
+}
+function viewCal(){
+  const seg=`<div class="grid grid-cols-2 gap-2 mb-3">${[['month','Theo tháng'],['day','Theo ngày']].map(([k,l])=>`<button data-a="cv" data-id="${k}" class="h-10 rounded-xl text-sm font-semibold ${S.cv===k?'bg-emerald-500 text-white':'bg-white dark:bg-zinc-900'}">${l}</button>`).join('')}</div>`;
+  if(S.cv==='day') return seg+dayDetail(S.date,true);
+  const [y,m]=S.cm.split('-').map(Number), n=new Date(y,m,0).getDate(), off=(new Date(y,m-1,1).getDay()+6)%7, td=todayStr(), kt=KCAL[S.goal];
+  let cells='<span></span>'.repeat(off), bars='', tT=0,tD=0,hC=0,el=0,lgd=0,ok=0,kS=0,sS=0;
+  for(let d=1;d<=n;d++){
+    const k=y+'-'+pad(m)+'-'+pad(d), i=dayInfo(k);
+    tT+=i.tk.length;tD+=i.done;hC+=i.hb.length;if(k<=td)el++;
+    if(i.lg.length){lgd++;kS+=i.kc;sS+=i.sp;if(i.sp<=S.budget)ok++}
+    const dot=c=>`<i class="w-1.5 h-1.5 rounded-full ${c}"></i>`;
+    const dots=(i.tk.length?dot(i.done===i.tk.length?'bg-indigo-500':'bg-indigo-300 dark:bg-indigo-700'):'')+(i.hb.length?dot('bg-emerald-500'):'')+(i.lg.length?dot(i.sp>S.budget?'bg-rose-500':'bg-amber-400'):'');
+    cells+=`<button data-a="day" data-id="${k}" aria-label="Ngày ${d}" class="h-12 rounded-xl flex flex-col items-center justify-center text-sm ${k===S.date?'bg-emerald-500 text-white font-bold':k===td?'ring-2 ring-emerald-500':'bg-stone-100 dark:bg-zinc-800'}">${d}<span class="flex gap-0.5 h-1.5 mt-0.5">${dots}</span></button>`;
+    bars+=`<div class="flex-1 flex items-end h-full" title="${d}: ${i.kc} kcal"><div class="w-full rounded-t ${i.kc>kt*1.1?'bg-amber-400':'bg-emerald-500'}" style="height:${Math.min(100,i.kc/(kt*1.3)*100)}%;min-height:${i.kc?2:0}px"></div></div>`;
+  }
+  const pc=(a,b)=>b?Math.round(a/b*100):0, hr=pc(hC,S.habits.length*el);
+  return seg+`<div class="${card} p-3 mb-3">
+    <div class="flex items-center justify-between mb-2"><button data-a="cm" data-id="-1" class="w-11 h-11 rounded-xl text-lg" aria-label="Tháng trước">‹</button><p class="font-bold text-sm">Tháng ${m}/${y}</p><button data-a="cm" data-id="1" class="w-11 h-11 rounded-xl text-lg" aria-label="Tháng sau">›</button></div>
+    <div class="grid grid-cols-7 gap-1 text-center text-[11px] text-stone-500 dark:text-zinc-500 mb-1">${['T2','T3','T4','T5','T6','T7','CN'].map(x=>`<span>${x}</span>`).join('')}</div>
+    <div class="grid grid-cols-7 gap-1">${cells}</div>
+    <p class="text-[11px] text-stone-500 dark:text-zinc-500 mt-2">Chấm tím: việc làm · xanh: thói quen · vàng: ăn uống trong ngân sách · đỏ: vượt ngân sách</p>
+  </div>`+dayDetail(S.date,false)+`<div class="${card} p-4 mb-3">
+    <p class="font-bold text-sm mb-3">Tiến độ tháng ${m}</p>
+    ${bar('Việc làm hoàn thành',pc(tD,tT),tD+'/'+tT,'bg-indigo-500')}
+    ${bar('Điểm danh thói quen',Math.min(100,hr),hr+'%','bg-emerald-500')}
+    ${bar('Ngày ăn trong ngân sách',pc(ok,lgd),ok+'/'+lgd+' ngày','bg-amber-400')}
+    <p class="text-xs text-stone-500 dark:text-zinc-400 mb-2">Trung bình ${lgd?Math.round(kS/lgd):0} kcal/ngày (mục tiêu ~${kt}) · Tổng chi ${vnd(sS)}</p>
+    <div class="flex gap-px h-24 border-b border-stone-200 dark:border-zinc-700">${bars}</div>
+    <p class="text-[11px] text-stone-500 dark:text-zinc-500 mt-1">kcal mỗi ngày trong tháng (cột vàng: vượt mục tiêu hơn 10%)</p>
+  </div>`;
+}
+
+/* ---------- Thực đơn cả ngày + danh sách mua sắm ---------- */
+function planCard(){
+  const pd=planDishes(), sub='text-xs text-stone-500 dark:text-zinc-400', sm='h-9 px-3 rounded-lg text-xs font-semibold bg-stone-200 dark:bg-zinc-800';
+  if(!pd.length) return `<div class="${card} p-4 mb-3"><p class="font-bold text-sm">Thực đơn cả ngày</p><p class="${sub} mt-1 mb-3">Tự chọn 3 bữa hợp ngân sách và mục tiêu, kèm danh sách mua sắm.</p><button data-a="plan" class="${btn} w-full">Lên thực đơn hôm nay</button></div>`;
+  const cost=pd.reduce((a,o)=>a+o.d.p,0), kc=pd.reduce((a,o)=>a+o.d.k,0), over=cost-S.budget;
+  const sl=shopList(), sh=S.shop[S.date]||{}, own=sl.reduce((a,o)=>a+o.f.p*o.q,0);
+  return `<div class="${card} p-4 mb-3">
+    <div class="flex items-center justify-between mb-2"><p class="font-bold text-sm">Thực đơn cả ngày</p><button data-a="plan" class="${sm}">Tạo lại</button></div>
+    <ul class="space-y-2">${pd.map(({m,d})=>`<li class="flex items-center gap-2 text-sm"><span class="w-12 text-xs font-semibold ${sub}">${MEALS[m]}</span><span class="flex-1">${esc(d.n)}<span class="block ${sub}">${vnd(d.p)} · ${d.k} kcal</span></span><button data-a="swap" data-id="${m}" class="${sm}">Đổi</button></li>`).join('')}</ul>
+    <div class="flex justify-between mt-3 pt-3 border-t border-stone-200 dark:border-zinc-800 text-sm"><span>Tổng ${kc} kcal</span><span class="font-bold ${over>0?'text-rose-500':'text-emerald-600 dark:text-emerald-400'}">${vnd(cost)} / ${vnd(S.budget)}</span></div>
+    <p class="text-xs mt-1 ${over>0?'text-rose-500':sub}" role="status">${over>0?'⚠️ Vượt ngân sách '+vnd(over)+'. Bấm “Đổi” để chọn món rẻ hơn.':'Còn dư '+vnd(-over)+' so với ngân sách.'}</p>
+    <button data-a="logplan" class="${btn} w-full mt-3">Ghi cả ngày vào nhật ký</button>
+    <p class="font-bold text-sm mt-4 mb-1">🛒 Danh sách mua sắm</p>
+    <ul>${sl.map(o=>`<li><button data-a="shop" data-id="${o.i}" class="w-full min-h-[44px] flex items-center gap-3 text-left text-sm ${sh[o.i]?'line-through text-stone-400 dark:text-zinc-500':''}"><span class="w-6 h-6 shrink-0 rounded-md border-2 flex items-center justify-center text-xs ${sh[o.i]?'bg-emerald-500 border-emerald-500 text-white':'border-stone-300 dark:border-zinc-600'}">${sh[o.i]?'✓':''}</span><span class="flex-1">${o.f.n} · ${+o.q.toFixed(1)} ${o.f.u}</span><span class="text-xs">${vnd(o.f.p*o.q)}</span></button></li>`).join('')}</ul>
+    <p class="${sub} mt-2">Nếu tự nấu, nguyên liệu khoảng ${vnd(own)}. Giá chỉ là ước tính.</p>
+  </div>`;
+}
+
+/* ---------- Thông báo, cài đặt, sao lưu ---------- */
+function notify(title,body){
+  if(!('Notification' in window)||Notification.permission!=='granted')return;
+  const o={body,icon:'icon-192.png',badge:'icon-192.png',tag:'ns-'+title};
+  const fb=()=>{try{new Notification(title,o)}catch(e){}};
+  if(navigator.serviceWorker) navigator.serviceWorker.getRegistration().then(r=>r?r.showNotification(title,o):fb()).catch(fb); else fb();
+}
+function toggleNotif(){
+  if(S.notif.on){S.notif.on=false;return commit()}
+  if(!('Notification' in window)) return alert('Trình duyệt này chưa hỗ trợ thông báo.');
+  Notification.requestPermission().then(p=>{S.notif.on=p==='granted';if(!S.notif.on)alert('Chưa được cấp quyền thông báo.');commit();if(S.notif.on)notify('Đã bật thông báo','Bạn sẽ nhận nhắc nhở theo khung giờ đã đặt.')});
+}
+function tick(){
+  if(!S.notif.on||!('Notification' in window)||Notification.permission!=='granted')return;
+  const n=new Date(), now=n.getHours()*60+n.getMinutes(), td=todayStr(); let ch=false;
+  S.notif.rem.forEach(r=>{
+    if(!r.on||S.notif.last[r.id]===td)return;
+    const[h,m]=r.time.split(':').map(Number), t=h*60+m;
+    if(now>=t){S.notif.last[r.id]=td;ch=true;if(now-t<=120)notify(r.label,r.msg+(now-t>2?' (nhắc trễ '+(now-t)+' phút)':''))}
+  });
+  if(ch)save();
+}
+function exportData(){const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([JSON.stringify(S,null,1)],{type:'application/json'}));a.download='nhip-song-backup-'+todayStr()+'.json';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}
+function importData(f){
+  if(!f)return; const r=new FileReader();
+  r.onload=()=>{try{const o=JSON.parse(r.result);if(!Array.isArray(o.tasks))throw 0;if(confirm('Nhập sao lưu sẽ thay thế dữ liệu hiện tại. Tiếp tục?')){Object.assign(S,o);S.date=todayStr();S.cm=S.date.slice(0,7);commit()}}catch(e){alert('File sao lưu không hợp lệ.')}};
+  r.readAsText(f);
+}
+let DP;
+addEventListener('beforeinstallprompt',e=>{e.preventDefault();DP=e;if(S.tab==='set')render()});
+addEventListener('appinstalled',()=>{DP=null;render()});
+function viewSet(){
+  const sup='Notification' in window, ios=/iphone|ipad|ipod/i.test(navigator.userAgent), sa=matchMedia('(display-mode: standalone)').matches||navigator.standalone;
+  const sub='text-xs text-stone-500 dark:text-zinc-400', sec=`${card} p-4 mb-3`, sm='h-10 px-4 rounded-xl text-sm font-semibold bg-stone-200 dark:bg-zinc-800 inline-flex items-center';
+  const st=!sup?'Trình duyệt chưa hỗ trợ thông báo'+(ios?' (iPhone: cần thêm app vào Màn hình chính, iOS 16.4 trở lên).':'.'):Notification.permission==='denied'?'Bạn đã chặn thông báo, hãy bật lại trong cài đặt trang web.':S.notif.on?'Đang bật':'Đang tắt';
+  return `<div class="${sec}">
+    <div class="flex items-center justify-between gap-3"><div><p class="font-bold text-sm">Thông báo nhắc nhở</p><p class="${sub} mt-0.5">${st}</p></div>
+    <button data-a="notif" role="switch" aria-checked="${S.notif.on}" aria-label="Bật tắt thông báo" class="w-14 h-8 rounded-full shrink-0 relative transition ${S.notif.on?'bg-emerald-500':'bg-stone-300 dark:bg-zinc-700'}"><span class="absolute top-1 w-6 h-6 rounded-full bg-white transition-all ${S.notif.on?'left-7':'left-1'}"></span></button></div>
+    ${S.notif.on?`<button data-a="ntest" class="${sm} mt-3">Gửi thông báo thử</button>`:''}
+    <p class="${sub} mt-3">Thông báo hẹn giờ chạy khi ứng dụng đang mở hoặc vừa chuyển xuống nền. Nếu bạn đã đóng hẳn, nhắc nhở bị lỡ sẽ hiện ngay khi mở lại app (trong 2 giờ sau giờ hẹn).</p>
+  </div>
+  <div class="${sec}"><p class="font-bold text-sm mb-2">Khung giờ nhắc hằng ngày</p>
+    <ul class="space-y-2 mb-3">${S.notif.rem.map(r=>`<li class="flex items-center gap-2"><button data-a="rtog" data-id="${r.id}" role="switch" aria-checked="${r.on}" aria-label="Bật tắt nhắc" class="w-6 h-6 shrink-0 rounded-md border-2 text-xs ${r.on?'bg-emerald-500 border-emerald-500 text-white':'border-stone-300 dark:border-zinc-600'}">${r.on?'✓':''}</button><span class="flex-1 text-sm">${esc(r.label)}</span><input type="time" data-c="rtime" data-id="${r.id}" value="${r.time}" class="${input} !w-28 text-center"><button data-a="rdel" data-id="${r.id}" class="w-10 h-10 rounded-xl text-rose-500" aria-label="Xóa">✕</button></li>`).join('')}</ul>
+    <form data-f="rem" class="flex gap-2"><input name="l" class="${input}" placeholder="Nhắc việc mới…" required><input name="t" type="time" value="20:00" class="${input} !w-28" required><button class="${btn}">Thêm</button></form>
+  </div>
+  <div class="${sec}"><p class="font-bold text-sm mb-1">Cài đặt ứng dụng</p>
+    ${sa?`<p class="${sub}">Ứng dụng đã được cài trên thiết bị này ✓</p>`:DP?`<button data-a="install" class="${btn}">Cài ứng dụng</button>`:`<p class="${sub}">${ios?'Safari: bấm nút Chia sẻ, rồi “Thêm vào MH chính”.':'Chrome: bấm menu ⋮, rồi “Cài đặt ứng dụng” (cần mở qua đường link https).'}</p>`}
+  </div>
+  <div class="${sec}"><p class="font-bold text-sm mb-2">Sao lưu dữ liệu</p><div class="flex gap-2"><button data-a="export" class="${sm}">Xuất file</button><label class="${sm} cursor-pointer">Nhập file<input type="file" accept="application/json,.json" data-c="import" class="hidden"></label></div></div>`;
+}
+
+const TABS=[['tasks','✅','Việc làm'],['habits','🔥','Thói quen'],['diet','🍚','Ăn uống'],['cal','📅','Lịch'],['set','⚙️','Cài đặt']];
+function render(){
+  document.documentElement.classList.toggle('dark',S.theme==='dark');
+  $('#themeBtn').textContent=S.theme==='dark'?'☀️':'🌙';
+  $('#dateLbl').textContent=(S.date===todayStr()?'Hôm nay · ':'')+parse(S.date).toLocaleDateString('vi-VN',{weekday:'long',day:'numeric',month:'numeric'});
+  $('#nav').innerHTML=TABS.map(([k,i,l])=>`<button data-a="tab" data-id="${k}" class="flex flex-col items-center py-1.5 rounded-xl ${S.tab===k?'text-emerald-600 dark:text-emerald-400 font-bold':'text-stone-500 dark:text-zinc-500'}"><span class="text-xl leading-none">${i}</span><span class="text-[11px] mt-0.5">${l}</span></button>`).join('');
+  $('#app').innerHTML=S.tab==='set'?viewSet():S.tab==='cal'?viewCal():S.tab==='tasks'?viewTasks():S.tab==='habits'?viewHabits():viewDiet();
+}
+const commit=()=>{save();render()};
+const shift=n=>{const d=parse(S.date);d.setDate(d.getDate()+n);S.date=ymd(d);S.cm=S.date.slice(0,7);render()};
+
+/* ---------- Sự kiện ---------- */
+document.addEventListener('click',e=>{
+  const b=e.target.closest('[data-a]'); if(!b) return;
+  const a=b.dataset.a, id=b.dataset.id;
+  if(a==='theme'){S.theme=S.theme==='dark'?'light':'dark';return commit()}
+  if(a==='prev') return shift(-1);
+  if(a==='next') return shift(1);
+  if(a==='today'){S.date=todayStr();S.cm=S.date.slice(0,7);return render()}
+  if(a==='tab'){S.tab=id;save();return render()}
+  if(a==='plan') newPlan();
+  if(a==='swap'){S.plan[S.date][id]=pick(id).n;S.shop[S.date]={}}
+  if(a==='shop'){const h=S.shop[S.date]=S.shop[S.date]||{};h[id]=!h[id]}
+  if(a==='logplan') planDishes().forEach(({m,d})=>(S.log[S.date]=S.log[S.date]||[]).push({id:uid(),m,n:d.n,p:d.p,k:d.k,q:1,u:'phần',pk:d.k,pp:d.p}));
+  if(a==='notif'){toggleNotif();return}
+  if(a==='ntest'){notify('Life & Diet Tracker','Thông báo hoạt động bình thường 🎉');return}
+  if(a==='rtog'){const r=S.notif.rem.find(x=>x.id===id);r.on=!r.on;delete S.notif.last[id]}
+  if(a==='rdel') S.notif.rem=S.notif.rem.filter(x=>x.id!==id);
+  if(a==='install'&&DP){DP.prompt();DP=null;return}
+  if(a==='export'){exportData();return}
+  if(a==='cv') S.cv=id;
+  if(a==='cm'){const[y,m]=S.cm.split('-').map(Number);const d=new Date(y,m-1+(+id),1);S.cm=d.getFullYear()+'-'+pad(d.getMonth()+1)}
+  if(a==='day'){S.date=id;S.cm=id.slice(0,7)}
+  if(a==='go') S.tab=id;
+  if(a==='qm'||a==='qp'){const x=(S.log[S.date]||[]).find(z=>z.id===id);if(!x.pk){x.pk=x.k;x.pp=x.p;x.q=1;x.u='phần'}x.q=Math.max(.5,(x.q||1)+(a==='qp'?.5:-.5));x.k=Math.round(x.pk*x.q);x.p=Math.round(x.pp*x.q)}
+  if(a==='toggle'){const t=S.tasks.find(x=>x.id===id);t.done=!t.done}
+  if(a==='edit'){const t=S.tasks.find(x=>x.id===id);const v=prompt('Sửa công việc:',t.t);if(v&&v.trim())t.t=v.trim()}
+  if(a==='del') S.tasks=S.tasks.filter(x=>x.id!==id);
+  if(a==='check'){const h=S.habits.find(x=>x.id===id);h.days=h.days.includes(S.date)?h.days.filter(d=>d!==S.date):[...h.days,S.date]}
+  if(a==='hdel'){if(confirm('Xóa thói quen này và toàn bộ chuỗi ngày?'))S.habits=S.habits.filter(x=>x.id!==id);else return}
+  if(a==='goal'){S.goal=id;SUG={}}
+  if(a==='reroll') SUG[id]=suggest(id);
+  if(a==='addsug'){const[m,i]=id.split(':');const x=getSug(m)[+i];(S.log[S.date]=S.log[S.date]||[]).push({id:uid(),m,n:x.n,p:x.p,k:x.k,q:1,u:'phần',pk:x.k,pp:x.p})}
+  if(a==='ldel') S.log[S.date]=(S.log[S.date]||[]).filter(x=>x.id!==id);
+  commit();
+});
+document.addEventListener('submit',e=>{
+  const f=e.target.closest('[data-f]'); if(!f) return; e.preventDefault();
+  const v=Object.fromEntries(new FormData(f));
+  if(f.dataset.f==='task') S.tasks.push({id:uid(),t:v.t.trim(),d:S.date,done:false});
+  if(f.dataset.f==='habit') S.habits.push({id:uid(),n:v.n.trim(),days:[]});
+  if(f.dataset.f==='rem') S.notif.rem.push({id:uid(),label:v.l.trim(),time:v.t,msg:v.l.trim(),on:true});
+  if(f.dataset.f==='portion'){const x=F[+v.f],q=Math.max(.5,+v.q||1);(S.log[S.date]=S.log[S.date]||[]).push({id:uid(),m:v.m,n:x.n,q,u:x.u,pk:x.k,pp:x.p,k:Math.round(x.k*q),p:Math.round(x.p*q)})}
+  if(f.dataset.f==='meal') (S.log[S.date]=S.log[S.date]||[]).push({id:uid(),m:v.m,n:v.n.trim(),p:+v.p||0,k:+v.k||0,q:1,u:'phần',pk:+v.k||0,pp:+v.p||0});
+  commit();
+});
+document.addEventListener('change',e=>{
+  const c=e.target.dataset.c;
+  if(c==='rtime'){const r=S.notif.rem.find(x=>x.id===e.target.dataset.id);if(r&&e.target.value){r.time=e.target.value;delete S.notif.last[r.id];commit()}}
+  if(c==='import') importData(e.target.files[0]);
+  if(e.target.dataset.c==='budget'){S.budget=Math.max(0,+e.target.value||0);SUG={};commit()}
+});
+document.addEventListener('input',e=>{const f=e.target.closest('[data-f=portion]');if(f){const v=Object.fromEntries(new FormData(f));$('#pv').textContent=pv(F[+v.f],+v.q||1)}});
+setInterval(tick,20000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)tick()});
+if('serviceWorker' in navigator&&location.protocol.startsWith('http')) navigator.serviceWorker.register('sw.js').catch(()=>{});
+render();tick();
+</script>
+</body>
+</html>
